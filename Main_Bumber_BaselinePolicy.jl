@@ -28,7 +28,7 @@ config = 3 # 1,2, or 3
 m = RoombaPOMDP(sensor=sensor, mdp=RoombaMDP(config=config));
 
 # %% -----------------------------------------------------------------------
-num_particles = 2000
+num_particles = 5000
 resampler = BumperResampler(num_particles)
 # for the bumper environments
 # resampler = BumperResampler(num_particles)
@@ -70,7 +70,7 @@ function POMDPs.action(p::ToEnd, b::ParticleCollection{RoombaState})
     omegaMax = m.mdp.om_max
 
     #Normal driving speed
-    vel = 1.0
+    vel = 2.0
 
     #Set max and min number of time-steps to spin
     maxSpinCount = 8
@@ -104,8 +104,7 @@ function POMDPs.action(p::ToEnd, b::ParticleCollection{RoombaState})
             if (spinSteps != 0)
                 #decrement spinSteps
                 spinSteps -= 1
-                print(spinSteps)
-                print("\n")
+            
                 #Return our trajectory
                 return RoombaAct(0.0, omegaMax)
             #Otherwise we are ready to test to see if we can drive forward
@@ -129,9 +128,9 @@ function POMDPs.action(p::ToEnd, b::ParticleCollection{RoombaState})
 
 end
 
-# %% -----------------------------------------------------------------------
+# %% ----------------------------------------------stanf-------------------------
 # first seed the environment
-Random.seed!(2)
+Random.seed!()
 
 # reset the policy
 p = ToEnd(0) # here, the argument sets the time-steps elapsed to 0
@@ -158,7 +157,7 @@ for (t, step) in enumerate(stepthrough(m, p, belief_updater, max_steps=100))
 end
 
 # %% -----------------------------------------------------------------------
-"""using Statistics
+using Statistics
 
 total_rewards = []
 
@@ -174,4 +173,3 @@ for exp = 1:5
 end
 
 @printf("Mean Total Reward: %.3f, StdErr Total Reward: %.3f", mean(total_rewards), std(total_rewards)/sqrt(5))
-"""
