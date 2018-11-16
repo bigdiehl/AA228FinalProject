@@ -104,7 +104,7 @@ function POMDPs.action(p::ToEnd, b::ParticleCollection{RoombaState})
             if (spinSteps != 0)
                 #decrement spinSteps
                 spinSteps -= 1
-            
+
                 #Return our trajectory
                 return RoombaAct(0.0, omegaMax)
             #Otherwise we are ready to test to see if we can drive forward
@@ -127,7 +127,7 @@ function POMDPs.action(p::ToEnd, b::ParticleCollection{RoombaState})
     end
 
 end
-
+#tpharris
 # %% ----------------------------------------------stanf-------------------------
 # first seed the environment
 Random.seed!()
