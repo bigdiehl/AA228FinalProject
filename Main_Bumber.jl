@@ -53,7 +53,7 @@ m = RoombaPOMDP(sensor=sensor, mdp=RoombaMDP(config=config));
 
 # %% -----------------------------------------------------------------------
 #Create the particle filter
-num_particles = 2000 #2000
+num_particles = 5000 #2000
 resampler = BumperResampler(num_particles)
 spf = SimpleParticleFilter(m, resampler)
 
@@ -75,11 +75,11 @@ if (1 == 0)
     #Use our solver and our POMDP model to find a policy
     policy = solve(solver,m_discrete)
     #Save our policy so we don't have to recompute
-    using JLD
-    save("my_policy.jld", "policy", policy)
+    using JLD2, FileIO
+    @JLD2.save "my_policy.jld" policy
 #Otherwise use the saved policy we computed previously
 else
-    policy = load("my_policy.jld","policy")
+    @JLD2.load "my_policy.jld" policy
 end
 
 # %% -----------------------------------------------------------------------
@@ -91,46 +91,82 @@ mutable struct ToEnd <: Policy
 end
 
 # %% -----------------------------------------------------------------------
+#flag for our wall hit policy
+previousBumpState = false
+
 states = POMDPs.states(m_discrete)
 
 # define a new function that takes in the policy struct and current belief,
 # and returns the desired action
 function POMDPs.action(p::ToEnd, b::ParticleCollection{RoombaState})
 
-    #Extract our policy from struct p
-    policy = p.policy
-    #Extract our set of alpha vectors from our policy (one for each action)
-    alphas = policy.alphas
+    global previousBumpState
 
-    ihi = 0
-    vhi = -Inf
+    #Drive straight into wall to localize belief state
+    if previousBumpState == false
+        #If the wall has been bumped, then all particles are on the wall. If so,
+        #then any particle will do for determining wall contact
+        s = particle(b,1)
 
-    numStates = POMDPs.n_states(m_discrete)
-    numActions = length(alphas)
+        #Call the wall_contact function to determine if we are in wall contact
+        #(returns true or false)
+        currentBumpState = AA228FinalProject.wall_contact(m,s)
 
-
-    #Create our belief vector from our particle filter
-    belief = zeros(numStates)
-    for i = 1:num_particles
-        s = particle(b,i)
-        index = POMDPs.stateindex(m_discrete,s)
-        belief[index] += 1
-    end
-    belief = belief/num_particles
-
-    # see which action gives the highest util value
-    for ai = 1:numActions
-        util = dot(alphas[ai], belief)
-        if util > vhi
-            vhi = util
-            ihi = ai
+        if currentBumpState == false
+            return RoombaAct(5.0, 0.0)
+        else
+            previousBumpState = true
         end
     end
 
-    # map the index to action
-    a = policy.action_map[ihi]
+    #Use alpha vectors once first wall contact is made
+    if previousBumpState == true
+        #Extract our policy from struct p
+        policy = p.policy
+        #Extract our set of alpha vectors from our policy (one for each action)
+        alphas = policy.alphas
 
-    return RoombaAct(a[1], a[2])
+        greatestUtilityIndex = 6
+        greatestUtility = -Inf
+
+        numStates = POMDPs.n_states(m_discrete)
+        numActions = length(alphas)
+
+
+        #Create our belief vector from our particle filter
+        belief = zeros(numStates)
+        for i = 1:num_particles
+            s = particle(b,i)
+            index = POMDPs.stateindex(m_discrete,s)
+            belief[index] += 1
+        end
+        belief = belief/num_particles
+
+        #print(belief)
+        #print("\n")
+
+        # see which action gives the highest util value
+        for i = 1:numActions
+            utility = dot(alphas[i], belief)
+            if utility > greatestUtility
+                greatestUtility = utility
+                greatestUtilityIndex = i
+                print(greatestUtility)
+                print("\n")
+                print(greatestUtilityIndex)
+
+            end
+        end
+        print("\n\n\n")
+
+        # map the index to action
+        a = policy.action_map[greatestUtilityIndex]
+
+        if greatestUtilityIndex == 1
+            a = policy.action_map[6]
+        end
+        return RoombaAct(a[1], a[2])
+    end
 
 end
 
@@ -139,10 +175,13 @@ end
 #****************************************************************************
 
 # first seed the environment
-Random.seed!(5)
+Random.seed!(60)
 
 # reset the policy
 p = ToEnd(0,policy) # here, the argument sets the time-steps elapsed to 0
+
+#reset previousBumpState
+previousBumpState = false
 
 #RUN THE SIMULATION
 c = @GtkCanvas()
@@ -162,7 +201,7 @@ for (t, step) in enumerate(stepthrough(m, p, belief_updater, max_steps=100))
         show_text(ctx, @sprintf("t=%d, state=%s, o=%.3f",t,string(step.s),step.o))
     end
     show(c)
-    sleep(0.1) # to slow down the simulation
+    sleep(0.05) # to slow down the simulation
 end
 
 #%%**************************************************************************
