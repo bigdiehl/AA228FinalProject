@@ -69,8 +69,18 @@ solver = QMDPSolver(max_iterations=20,
                     tolerance=1e-3,
                     verbose=true)
 
-#Use our solver and our POMDP model to find a policy
-policy = solve(solver,m_discrete)
+
+#If we need to compute our policy for the first time
+if (1 == 0)
+    #Use our solver and our POMDP model to find a policy
+    policy = solve(solver,m_discrete)
+    #Save our policy so we don't have to recompute
+    using JLD
+    save("my_policy.jld", "policy", policy)
+#Otherwise use the saved policy we computed previously
+else
+    policy = load("my_policy.jld")
+end
 
 # %% -----------------------------------------------------------------------
 
@@ -116,7 +126,7 @@ function POMDPs.action(p::ToEnd, b::ParticleCollection{RoombaState})
             ihi = ai
         end
     end
-    
+
     # map the index to action
     a = policy.action_map[ihi]
 
