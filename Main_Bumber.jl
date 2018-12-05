@@ -31,7 +31,7 @@ using LinearAlgebra
 sensor = Bumper()
 
 #Room configuration. Choose from 1,2, or 3
-config = 3
+config = 1
 
 #Discretize state space
 num_x_pts = 50
@@ -44,16 +44,26 @@ vlist = collect(0:1.0:10.0)
 omlist = collect(0:0.2:1.0)
 aspace = vec(collect(RoombaAct(v, om) for v in vlist, om in omlist))
 
+#Get rid of first action which is (0,0). Doesn't do us any good
+aspace = aspace(2:length(aspace))
+
 #Construct the POMPDP for the QMDP solver (Discrete state/action space)
 m_discrete = RoombaPOMDP(sensor=sensor, mdp=RoombaMDP(config=config, sspace = sspace,
                       aspace = aspace));
+
+m_discrete2 = RoombaPOMDP(sensor=sensor, mdp=RoombaMDP(config=config, sspace = sspace,
+                    aspace = aspace));
+#Try increasing the rewards
+m_discrete2.mdp.goal_reward = 100
+m_discrete2.mdp.stairs_penalty = -100
+
 
 #Construct the POMDP for the simulator (Continuous state/action space)
 m = RoombaPOMDP(sensor=sensor, mdp=RoombaMDP(config=config));
 
 # %% -----------------------------------------------------------------------
 #Create the particle filter
-num_particles = 5000 #2000
+num_particles = 10000 #2000
 resampler = BumperResampler(num_particles)
 spf = SimpleParticleFilter(m, resampler)
 
@@ -77,6 +87,13 @@ if (1 == 0)
     #Save our policy so we don't have to recompute
     using JLD2, FileIO
     @JLD2.save "my_policy.jld" policy
+
+
+    #Use our solver and our POMDP model to find a policy
+    policy = solve(solver,m_discrete2)
+    #Save our policy so we don't have to recompute
+    using JLD2, FileIO
+    @JLD2.save "my_policy2.jld" policy
 #Otherwise use the saved policy we computed previously
 else
     @JLD2.load "my_policy.jld" policy
@@ -151,13 +168,13 @@ function POMDPs.action(p::ToEnd, b::ParticleCollection{RoombaState})
             if utility > greatestUtility
                 greatestUtility = utility
                 greatestUtilityIndex = i
-                print(greatestUtility)
-                print("\n")
-                print(greatestUtilityIndex)
+                #print(greatestUtility)
+                #print("\n")
+                #print(greatestUtilityIndex)
 
             end
         end
-        print("\n\n\n")
+        #print("\n\n\n")
 
         # map the index to action
         a = policy.action_map[greatestUtilityIndex]
@@ -175,7 +192,7 @@ end
 #****************************************************************************
 
 # first seed the environment
-Random.seed!(60)
+Random.seed!(10)
 
 # reset the policy
 p = ToEnd(0,policy) # here, the argument sets the time-steps elapsed to 0
@@ -201,7 +218,7 @@ for (t, step) in enumerate(stepthrough(m, p, belief_updater, max_steps=100))
         show_text(ctx, @sprintf("t=%d, state=%s, o=%.3f",t,string(step.s),step.o))
     end
     show(c)
-    sleep(0.05) # to slow down the simulation
+    sleep(0.01) # to slow down the simulation
 end
 
 #%%**************************************************************************
