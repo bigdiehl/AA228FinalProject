@@ -22,119 +22,117 @@ using Gtk
 using Random
 using Printf
 
+using QMDP
+using POMDPModelTools # for ordered_actions
+using LinearAlgebra
+
 # %% -----------------------------------------------------------------------
-sensor = Bumper() # or Bumper() for the bumper version of the environment
-config = 3 # 1,2, or 3
+#Define our sensor
+sensor = Bumper()
+
+#Room configuration. Choose from 1,2, or 3
+config = 3
+
+#Discretize state space
+num_x_pts = 50
+num_y_pts = 50
+num_th_pts = 20
+sspace = DiscreteRoombaStateSpace(num_x_pts,num_y_pts,num_th_pts)
+
+#Discretize action space
+vlist = collect(0:1.0:10.0)
+omlist = collect(0:0.2:1.0)
+aspace = vec(collect(RoombaAct(v, om) for v in vlist, om in omlist))
+
+#Construct the POMPDP for the QMDP solver (Discrete state/action space)
+m_discrete = RoombaPOMDP(sensor=sensor, mdp=RoombaMDP(config=config, sspace = sspace,
+                      aspace = aspace));
+
+#Construct the POMDP for the simulator (Continuous state/action space)
 m = RoombaPOMDP(sensor=sensor, mdp=RoombaMDP(config=config));
 
 # %% -----------------------------------------------------------------------
-num_particles = 2000
+#Create the particle filter
+num_particles = 2000 #2000
 resampler = BumperResampler(num_particles)
-# for the bumper environments
-# resampler = BumperResampler(num_particles)
-
 spf = SimpleParticleFilter(m, resampler)
 
+#Create our belief updater using our simple particle filter
 v_noise_coefficient = 2.0
 om_noise_coefficient = 0.5
-
 belief_updater = RoombaParticleFilter(spf, v_noise_coefficient, om_noise_coefficient);
 
 # %% -----------------------------------------------------------------------
+#Define our solver
+#solver = FIBSolver()
+solver = QMDPSolver(max_iterations=20,
+                    tolerance=1e-3,
+                    verbose=true)
+
+#Use our solver and our POMDP model to find a policy
+policy = solve(solver,m_discrete)
+
+# %% -----------------------------------------------------------------------
+
 # Define the policy to test
 mutable struct ToEnd <: Policy
     ts::Int64 # to track the current time-step.
+    policy::AlphaVectorPolicy
 end
 
-# extract goal for heuristic controller
-goal_xy = get_goal_xy(m)
-
-#flag for our wall hit policy
-previousBumpState = false
-spinStep =
+# %% -----------------------------------------------------------------------
+states = POMDPs.states(m_discrete)
 
 # define a new function that takes in the policy struct and current belief,
 # and returns the desired action
 function POMDPs.action(p::ToEnd, b::ParticleCollection{RoombaState})
 
-    #Seed the environment
-    Random.seed!()
+    #Extract our policy from struct p
+    policy = p.policy
+    #Extract our set of alpha vectors from our policy (one for each action)
+    alphas = policy.alphas
 
-    #Naive approach: Bump the wall, spin in a random direction, and then drive
-    #again.
-    global previousBumpState
-    global spinSteps
+    ihi = 0
+    vhi = -Inf
 
-    #Fixed Velocity and spin rate maximums
-    velMax = m.mdp.v_max
-    omegaMax = m.mdp.om_max
+    numStates = POMDPs.n_states(m_discrete)
+    numActions = length(alphas)
 
-    #Normal driving speed
-    vel = 1.0
 
-    #Set max and min number of time-steps to spin
-    maxSpinCount = 8
-    minSpinCount = 2
-
-    #Increase time step
-    p.ts += 1
-
-    #If the wall has been bumped, then all particles are on the wall. If so,
-    #then any particle will do for determining wall contact
-    s = particle(b,1)
-
-    #Call the wall_contact function to determine if we are in wall contact
-    #(returns true or false)
-    currentBumpState = AA228FinalProject.wall_contact(m,s)
-
-    #The bump sensor tells us we are in contact with the wall
-    if (currentBumpState == true)
-        #Our memory variable tells us we weren't in contact the previous timestep
-        if (previousBumpState == false)
-            #Set a random number of time steps to spin
-            spinSteps = floor(minSpinCount+rand()*(maxSpinCount-minSpinCount))
-            #Update the previous state
-            previousBumpState = currentBumpState
-            #Return our trajectory
-            return RoombaAct(0.0, omegaMax)
-        #Our memory variable tells us we were in contact with the wall in the
-        #last time-step as well
-        elseif (previousBumpState == true)
-            #If we are still spinning
-            if (spinSteps != 0)
-                #decrement spinSteps
-                spinSteps -= 1
-                print(spinSteps)
-                print("\n")
-                #Return our trajectory
-                return RoombaAct(0.0, omegaMax)
-            #Otherwise we are ready to test to see if we can drive forward
-            else
-                #Assume that we won't aren't pointed into a wall
-                previousBumpState = false
-                #Attempt to drive forward. If we can't them the logic flow will
-                #reset the spinSteps variable and the Roomba will spin a random
-                #number of time-steps again
-                return RoombaAct(vel, 0.0)
-            end
-        end
-
-    #If we aren't in contact with the wall
-    elseif (currentBumpState == false)
-        #Update previous state
-        previousBumpState = currentBumpState
-        #Drive forward at a fixed velocity
-        return RoombaAct(vel, 0.0)
+    #Create our belief vector from our particle filter
+    belief = zeros(numStates)
+    for i = 1:num_particles
+        s = particle(b,i)
+        index = POMDPs.stateindex(m_discrete,s)
+        belief[index] += 1
     end
+    belief = belief/num_particles
+
+    # see which action gives the highest util value
+    for ai = 1:numActions
+        util = dot(alphas[ai], belief)
+        if util > vhi
+            vhi = util
+            ihi = ai
+        end
+    end
+    
+    # map the index to action
+    a = policy.action_map[ihi]
+
+    return RoombaAct(a[1], a[2])
 
 end
 
-# %% -----------------------------------------------------------------------
+#%%**************************************************************************
+#----------------------SIMULATION-------------------------------------------
+#****************************************************************************
+
 # first seed the environment
-Random.seed!(2)
+Random.seed!(5)
 
 # reset the policy
-p = ToEnd(0) # here, the argument sets the time-steps elapsed to 0
+p = ToEnd(0,policy) # here, the argument sets the time-steps elapsed to 0
 
 #RUN THE SIMULATION
 c = @GtkCanvas()
@@ -157,21 +155,25 @@ for (t, step) in enumerate(stepthrough(m, p, belief_updater, max_steps=100))
     sleep(0.1) # to slow down the simulation
 end
 
-# %% -----------------------------------------------------------------------
-"""using Statistics
+#%%**************************************************************************
+#----------------------TESTING-------------------------------------------
+#****************************************************************************
 
-total_rewards = []
+if (1==0)
+    using Statistics
 
-for exp = 1:5
-    println(string(exp))
+    total_rewards = []
 
-    Random.seed!(exp)
+    for exp = 1:5
+        println(string(exp))
 
-    p = ToEnd(0)
-    traj_rewards = sum([step.r for step in stepthrough(m,p,belief_updater, max_steps=100)])
+        Random.seed!(exp)
 
-    push!(total_rewards, traj_rewards)
+        p = ToEnd(0)
+        traj_rewards = sum([step.r for step in stepthrough(m,p,belief_updater, max_steps=100)])
+
+        push!(total_rewards, traj_rewards)
+    end
+
+    @printf("Mean Total Reward: %.3f, StdErr Total Reward: %.3f", mean(total_rewards), std(total_rewards)/sqrt(5))
 end
-
-@printf("Mean Total Reward: %.3f, StdErr Total Reward: %.3f", mean(total_rewards), std(total_rewards)/sqrt(5))
-"""

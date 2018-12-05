@@ -337,6 +337,11 @@ function POMDPs.reward(m::RoombaModel,
                 a::AbstractVector{Float64},
                 sp::AbstractVector{Float64})
 
+#function POMDPs.reward(m::RoombaPOMDP{Bumper,Bool},
+#		               s::RoombaState,
+#		               a::RoombaAct,
+#		               sp::RoombaState)
+
     # penalty for each timestep elapsed
     cum_reward = mdp(m).time_pen
 
