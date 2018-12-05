@@ -79,7 +79,7 @@ if (1 == 0)
     save("my_policy.jld", "policy", policy)
 #Otherwise use the saved policy we computed previously
 else
-    policy = load("my_policy.jld")
+    policy = load("my_policy.jld","policy")
 end
 
 # %% -----------------------------------------------------------------------
