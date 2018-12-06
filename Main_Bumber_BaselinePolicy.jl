@@ -25,8 +25,8 @@ using Printf
 # %% -----------------------------------------------------------------------
 sensor = Bumper() # or Bumper() for the bumper version of the environment
 config = 3 # 1,2, or 3
-m = RoombaPOMDP(sensor=sensor, mdp=RoombaMDP(config=config));
 
+m = RoombaPOMDP(sensor=sensor, mdp=RoombaMDP(config=config));
 # %% -----------------------------------------------------------------------
 num_particles = 5000
 resampler = BumperResampler(num_particles)
@@ -51,7 +51,7 @@ goal_xy = get_goal_xy(m)
 
 #flag for our wall hit policy
 previousBumpState = false
-spinStep =
+spinStep = 1
 
 # define a new function that takes in the policy struct and current belief,
 # and returns the desired action
@@ -70,7 +70,7 @@ function POMDPs.action(p::ToEnd, b::ParticleCollection{RoombaState})
     omegaMax = m.mdp.om_max
 
     #Normal driving speed
-    vel = 2.0
+    vel = 5.0
 
     #Set max and min number of time-steps to spin
     maxSpinCount = 8
@@ -128,9 +128,10 @@ function POMDPs.action(p::ToEnd, b::ParticleCollection{RoombaState})
 
 end
 #tpharris
+
 # %% ----------------------------------------------stanf-------------------------
 # first seed the environment
-Random.seed!()
+Random.seed!(3)
 
 # reset the policy
 p = ToEnd(0) # here, the argument sets the time-steps elapsed to 0
@@ -157,19 +158,21 @@ for (t, step) in enumerate(stepthrough(m, p, belief_updater, max_steps=100))
 end
 
 # %% -----------------------------------------------------------------------
-using Statistics
+if (1==0)
+    using Statistics
 
-total_rewards = []
+    total_rewards = []
 
-for exp = 1:5
-    println(string(exp))
+    for exp = 1:1
+        println(string(exp))
 
-    Random.seed!(exp)
+        Random.seed!(exp)
 
-    p = ToEnd(0)
-    traj_rewards = sum([step.r for step in stepthrough(m,p,belief_updater, max_steps=100)])
+        p = ToEnd(0)
+        traj_rewards = sum([step.r for step in stepthrough(m,p,belief_updater, max_steps=100)])
 
-    push!(total_rewards, traj_rewards)
+        push!(total_rewards, traj_rewards)
+    end
+
+    @printf("Mean Total Reward: %.3f, StdErr Total Reward: %.3f", mean(total_rewards), std(total_rewards)/sqrt(5))
 end
-
-@printf("Mean Total Reward: %.3f, StdErr Total Reward: %.3f", mean(total_rewards), std(total_rewards)/sqrt(5))
