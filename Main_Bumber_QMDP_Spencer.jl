@@ -111,7 +111,7 @@ end
 
 # %% -----------------------------------------------------------------------
 #flag for our wall hit policy
-previousBumpState = false
+previousBumpState = true
 
 states = POMDPs.states(m_discrete)
 
